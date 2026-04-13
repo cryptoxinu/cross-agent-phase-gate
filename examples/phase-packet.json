@@ -1,0 +1,21 @@
+{
+  "status": "implemented",
+  "summary": "One-sentence outcome for the current phase.",
+  "files_touched": [
+    "src/example.py",
+    "tests/test_example.py"
+  ],
+  "verification": {
+    "python3 -m unittest tests.test_example": "passed"
+  },
+  "acceptance_results": [
+    {
+      "criterion": "The planned behavior is implemented",
+      "status": "passed"
+    }
+  ],
+  "known_gaps": [
+    "Deferred edge-case handling remains for the next slice."
+  ],
+  "shared_gate_status": "green"
+}

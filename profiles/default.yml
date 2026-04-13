@@ -1,0 +1,10 @@
+role_mode: claude_builder_codex_reviewer
+repo_profile: default
+plan_roots:
+  - docs/plans
+  - .claude/plans
+default_verification: []
+review_rules:
+  reviewer_role: codex
+  builder_must_stop: true
+  must_report_unrelated_gate_failures: true

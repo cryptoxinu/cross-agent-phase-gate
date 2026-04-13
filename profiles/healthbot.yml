@@ -1,0 +1,14 @@
+role_mode: claude_builder_codex_reviewer
+repo_profile: healthbot
+plan_roots:
+  - docs/plans
+  - .claude/plans
+default_verification:
+  - ruff check src/ tests/
+  - pytest tests/ -q
+review_rules:
+  reviewer_role: codex
+  builder_must_stop: true
+  must_report_unrelated_gate_failures: true
+  must_not_claim_dark_work_is_live: true
+  medical_privacy_guardrails: true

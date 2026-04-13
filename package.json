@@ -1,0 +1,27 @@
+{
+  "name": "cross-agent-phase-gate",
+  "version": "0.2.1",
+  "description": "Local daemon, CLI, and shared Claude/Codex front-ends for bidirectional phase-gated delivery loops.",
+  "type": "module",
+  "license": "MIT",
+  "author": "cryptoxinu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cryptoxinu/cross-agent-phase-gate.git"
+  },
+  "homepage": "https://github.com/cryptoxinu/cross-agent-phase-gate",
+  "bugs": {
+    "url": "https://github.com/cryptoxinu/cross-agent-phase-gate/issues"
+  },
+  "scripts": {
+    "test": "python3 -m unittest discover -s tests -p 'test_*.py'"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "agents",
+    "workflow",
+    "review",
+    "phase-gate"
+  ]
+}

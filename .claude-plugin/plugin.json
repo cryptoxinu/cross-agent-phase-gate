@@ -1,0 +1,20 @@
+{
+  "name": "cross-agent-phase-gate",
+  "version": "0.2.1",
+  "description": "Bidirectional phase-gated delivery workflow where the current terminal is the builder by default and the other model acts as PM, architect, and review gate.",
+  "author": {
+    "name": "cryptoxinu"
+  },
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "workflow",
+    "review",
+    "phase-gate",
+    "automation"
+  ],
+  "skills": [
+    "./skills/"
+  ]
+}
