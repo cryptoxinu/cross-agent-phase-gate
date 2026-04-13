@@ -13,7 +13,7 @@ description: >
 Use the local wrapper:
 
 ```bash
-~/.claude/plugins/cross-agent-phase-gate/bin/phase-gate
+<repo>/bin/phase-gate
 ```
 
 ## Core Contract
@@ -30,12 +30,12 @@ Use the local wrapper:
 
 1. Identify the plan file.
 2. Choose the repo profile:
-   - `healthbot` for `/Users/z/HealthBot`
+   - `healthbot` for HealthBot-style repos
    - `default` otherwise
 3. Initialize the run:
 
 ```bash
-~/.claude/plugins/cross-agent-phase-gate/bin/claude-phase-gate init-run \
+<repo>/bin/claude-phase-gate init-run \
   --repo "$PWD" \
   --plan /absolute/path/to/plan.md \
   --repo-profile healthbot \
@@ -45,7 +45,7 @@ Use the local wrapper:
 4. Begin the current phase:
 
 ```bash
-~/.claude/plugins/cross-agent-phase-gate/bin/claude-phase-gate begin-phase \
+<repo>/bin/claude-phase-gate begin-phase \
   --repo "$PWD" \
   --json
 ```
@@ -65,7 +65,7 @@ Read the returned phase data and active carryforwards before coding.
 - If the user explicitly wants Codex to build and Claude to review, initialize the run with:
 
 ```bash
-~/.claude/plugins/cross-agent-phase-gate/bin/claude-phase-gate init-run \
+<repo>/bin/claude-phase-gate init-run \
   --repo "$PWD" \
   --plan /absolute/path/to/plan.md \
   --role-mode codex_builder_claude_reviewer \
@@ -91,7 +91,7 @@ Use the template as the default shape and keep the contents factual.
 ## Submit For Review
 
 ```bash
-~/.claude/plugins/cross-agent-phase-gate/bin/claude-phase-gate submit-phase \
+<repo>/bin/claude-phase-gate submit-phase \
   --repo "$PWD" \
   --run-id <run-id> \
   --phase-id <phase-id> \

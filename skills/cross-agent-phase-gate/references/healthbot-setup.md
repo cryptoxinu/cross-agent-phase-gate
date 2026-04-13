@@ -1,6 +1,6 @@
 # HealthBot Setup
 
-Use the built-in `healthbot` profile when the repo is `/Users/z/HealthBot`.
+Use the built-in `healthbot` profile for a HealthBot-style repository.
 
 That profile defaults to:
 
@@ -15,9 +15,9 @@ That profile defaults to:
 Initialize from HealthBot root in a Claude session:
 
 ```bash
-~/.claude/plugins/cross-agent-phase-gate/bin/claude-phase-gate init-run \
-  --repo /Users/z/HealthBot \
-  --plan /Users/z/HealthBot/docs/plans/2026-04-12-outbound-gateway-phase-1.md \
+<repo>/bin/claude-phase-gate init-run \
+  --repo /path/to/HealthBot \
+  --plan /path/to/HealthBot/docs/plans/2026-04-12-outbound-gateway-phase-1.md \
   --repo-profile healthbot \
   --json
 ```
@@ -25,9 +25,9 @@ Initialize from HealthBot root in a Claude session:
 Initialize from HealthBot root in a Codex session:
 
 ```bash
-~/.claude/plugins/cross-agent-phase-gate/bin/codex-phase-gate init-run \
-  --repo /Users/z/HealthBot \
-  --plan /Users/z/HealthBot/docs/plans/2026-04-12-outbound-gateway-phase-1.md \
+<repo>/bin/codex-phase-gate init-run \
+  --repo /path/to/HealthBot \
+  --plan /path/to/HealthBot/docs/plans/2026-04-12-outbound-gateway-phase-1.md \
   --repo-profile healthbot \
   --json
 ```
