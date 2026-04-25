@@ -8,3 +8,6 @@ review_rules:
   reviewer_role: codex
   builder_must_stop: true
   must_report_unrelated_gate_failures: true
+  max_patch_rounds: 2
+  review_scope: code_only
+  patch_required_requires_evidence: true

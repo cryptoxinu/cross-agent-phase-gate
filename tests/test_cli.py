@@ -15,7 +15,7 @@ from cross_agent_phase_gate import cli
 
 class CliTests(unittest.TestCase):
     def test_submit_phase_uses_extended_http_timeout(self) -> None:
-        self.assertEqual(cli._request_timeout("/submit-phase"), 300)
+        self.assertEqual(cli._request_timeout("/submit-phase"), 1200)
         self.assertEqual(cli._request_timeout("/status"), 30)
 
     def test_main_returns_clean_error_for_runtime_failure(self) -> None:

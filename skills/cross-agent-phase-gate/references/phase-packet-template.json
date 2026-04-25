@@ -16,5 +16,12 @@
   "known_gaps": [
     "List any deferred work or unresolved risks."
   ],
-  "shared_gate_status": "green"
+  "shared_gate_status": "green",
+  "patch_dispositions": [
+    {
+      "target_index": 0,
+      "disposition": "applied",
+      "note": "Required when this packet resubmits after a PATCH_REQUIRED. One entry per patch_targets[i] from the prior decision. disposition is 'applied' (must correspond to a real diff at the cited file:line) or 'disputed' (must include a rebuttal and be reflected in known_gaps)."
+    }
+  ]
 }

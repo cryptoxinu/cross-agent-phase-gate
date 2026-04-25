@@ -76,6 +76,28 @@ Then begin the current phase:
 
 - `PASS`: begin the next phase.
 - `CONDITIONAL_PASS`: begin the next phase with carryforwards active.
-- `PATCH_REQUIRED`: re-open the same phase, fix only the requested slice, and resubmit.
-- `HOLD`: stop.
+- `PATCH_REQUIRED`: re-open the same phase, fix the requested slice, and resubmit. See **On `PATCH_REQUIRED`** below — anti-laziness rule applies.
+- `HOLD`: stop. If the rationale contains `[REVIEW_LOOP_BREAK]`, the patch-round cap was hit and the human operator must adjudicate.
 - `REDIRECT`: follow the redirected next action or phase target.
+
+## On `PATCH_REQUIRED` (anti-laziness rule)
+
+Every `PATCH_REQUIRED` decision carries a structured `patch_targets` array. Each entry has `file`, `line`, `defect_class` (`code_bug` | `verification_failure` | `falsified_packet`), and `evidence`.
+
+You MUST:
+
+1. Read every entry. Do not skim or batch.
+2. For each target, decide agree or disagree against the actual file and line.
+3. For every agreed target, apply the fix. ALL of them. No half-measures, no "next round". If you agree with five, ship five fixes before resubmitting.
+4. For every disagreed target, write an explicit rebuttal in `patch_dispositions[].rebuttal` and surface it in `known_gaps`. Never silently skip. Never claim `applied` without a corresponding diff.
+5. Resubmit only after every agreed-with fix is in the diff.
+
+There is no third option — apply, or dispute. Do not negotiate scope.
+
+## Loop Break
+
+The gate caps `PATCH_REQUIRED` at `max_patch_rounds` (default 2). When the cap is hit, further bounces auto-convert to `HOLD` with `[REVIEW_LOOP_BREAK]`. Stop and surface to the user.
+
+## Reviewer Scope (informational)
+
+The reviewer prompt forbids plan-amendment churn, packet-hygiene nits, and stylistic preference as grounds for `PATCH_REQUIRED`. A `PATCH_REQUIRED` without concrete `patch_targets` is auto-downgraded to `CONDITIONAL_PASS` by the gate. Code-only review, no plan loops.

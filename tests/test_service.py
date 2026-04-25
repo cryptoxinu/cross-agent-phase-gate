@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from cross_agent_phase_gate.models import PhaseDecision, PhaseDefinition
+from cross_agent_phase_gate.models import PatchTarget, PhaseDecision, PhaseDefinition
 from cross_agent_phase_gate.service import PhaseGateService, QueuedReviewAdapter
 
 
@@ -376,6 +376,185 @@ class PhaseGateServiceTests(unittest.TestCase):
                 "bidirectional smoke marker",
                 diff_summary["file_evidence"][0]["content_preview"],
             )
+
+
+class PatchRoundCapTests(unittest.TestCase):
+    def _patch_target(self) -> PatchTarget:
+        return PatchTarget(
+            file="src/foo.py",
+            line=12,
+            defect_class="code_bug",
+            evidence="raw SQL string interpolation observed",
+        )
+
+    def _packet(self) -> dict:
+        return {
+            "status": "implemented",
+            "summary": "Phase 1 attempt.",
+            "files_touched": [],
+            "verification": {},
+            "acceptance_results": [],
+            "known_gaps": [],
+            "shared_gate_status": "green",
+        }
+
+    def test_patch_round_increments_then_resets_on_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            home_dir = Path(tmp_dir) / "home"
+            repo_path = Path(tmp_dir) / "repo"
+            repo_path.mkdir()
+            plan_path = _write_plan(repo_path)
+            adapter = QueuedReviewAdapter(
+                [
+                    PhaseDecision.patch_required(
+                        phase="1",
+                        summary="Patch needed.",
+                        rationale="Defect.",
+                        patch_targets=(self._patch_target(),),
+                    ),
+                    PhaseDecision.pass_decision(
+                        phase="1",
+                        summary="Now correct.",
+                        rationale="Patch applied.",
+                    ),
+                ]
+            )
+            service = PhaseGateService(home_dir=home_dir, review_adapter=adapter)
+            run = service.init_run(
+                repo_path=repo_path,
+                plan_path=plan_path,
+                role_mode="claude_builder_codex_reviewer",
+                repo_profile_name="healthbot",
+            )
+
+            phase = service.begin_phase(repo_path=repo_path, run_id=run.run_id)
+            service.submit_phase(
+                repo_path=repo_path,
+                run_id=run.run_id,
+                phase_id=phase["phase"]["id"],
+                packet=self._packet(),
+            )
+            after_patch = service.status(repo_path=repo_path, run_id=run.run_id)
+            self.assertEqual(after_patch["current_phase"]["patch_round"], 1)
+
+            phase_again = service.begin_phase(repo_path=repo_path, run_id=run.run_id)
+            self.assertEqual(phase_again["patch_round"], 1)
+            self.assertIsNotNone(phase_again["prior_decision"])
+            self.assertEqual(
+                phase_again["prior_decision"]["patch_targets"][0]["file"], "src/foo.py"
+            )
+            service.submit_phase(
+                repo_path=repo_path,
+                run_id=run.run_id,
+                phase_id=phase_again["phase"]["id"],
+                packet=self._packet(),
+            )
+
+            after_pass = service.status(repo_path=repo_path, run_id=run.run_id)
+            # Phase 1 advanced to phase 2; phase 1's stored patch_round was reset to 0.
+            self.assertEqual(after_pass["current_phase"]["id"], "2")
+            phase_one = after_pass["run"]["phases"][0]
+            self.assertEqual(phase_one["patch_round"], 0)
+
+    def test_patch_round_cap_escalates_to_review_loop_break_hold(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            home_dir = Path(tmp_dir) / "home"
+            repo_path = Path(tmp_dir) / "repo"
+            repo_path.mkdir()
+            plan_path = _write_plan(repo_path)
+            adapter = QueuedReviewAdapter(
+                [
+                    PhaseDecision.patch_required(
+                        phase="1",
+                        summary="Round 1.",
+                        rationale="Defect.",
+                        patch_targets=(self._patch_target(),),
+                    ),
+                    PhaseDecision.patch_required(
+                        phase="1",
+                        summary="Round 2.",
+                        rationale="Still bad.",
+                        patch_targets=(self._patch_target(),),
+                    ),
+                    PhaseDecision.patch_required(
+                        phase="1",
+                        summary="Round 3 — should escalate.",
+                        rationale="Reviewer wants to keep bouncing.",
+                        patch_targets=(self._patch_target(),),
+                    ),
+                ]
+            )
+            service = PhaseGateService(home_dir=home_dir, review_adapter=adapter)
+            run = service.init_run(
+                repo_path=repo_path,
+                plan_path=plan_path,
+                role_mode="claude_builder_codex_reviewer",
+                repo_profile_name="healthbot",
+            )
+
+            for _round in range(3):
+                phase = service.begin_phase(
+                    repo_path=repo_path, run_id=run.run_id
+                )
+                service.submit_phase(
+                    repo_path=repo_path,
+                    run_id=run.run_id,
+                    phase_id=phase["phase"]["id"],
+                    packet=self._packet(),
+                )
+
+            status = service.status(repo_path=repo_path, run_id=run.run_id)
+            self.assertEqual(status["run"]["status"], "hold")
+            decision = service.decision(repo_path=repo_path, run_id=run.run_id)
+            self.assertEqual(decision["decision"], "HOLD")
+            self.assertIn("REVIEW_LOOP_BREAK", decision["rationale"])
+            self.assertTrue(
+                any("REVIEW_LOOP_BREAK" in c for c in decision["carryforwards"]),
+                decision["carryforwards"],
+            )
+
+    def test_max_patch_rounds_is_configurable_via_repo_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            home_dir = Path(tmp_dir) / "home"
+            repo_path = Path(tmp_dir) / "repo"
+            repo_path.mkdir()
+            plan_path = _write_plan(repo_path)
+            adapter = QueuedReviewAdapter(
+                [
+                    PhaseDecision.patch_required(
+                        phase="1",
+                        summary="Round 1 — should escalate immediately.",
+                        rationale="cap=0 means first patch is over budget.",
+                        patch_targets=(self._patch_target(),),
+                    ),
+                ]
+            )
+            service = PhaseGateService(home_dir=home_dir, review_adapter=adapter)
+            run = service.init_run(
+                repo_path=repo_path,
+                plan_path=plan_path,
+                role_mode="claude_builder_codex_reviewer",
+                repo_profile_name="healthbot",
+            )
+            # Override the on-disk repo config to cap patch rounds at zero.
+            config_path = service.store.config_path(repo_path)
+            existing = config_path.read_text(encoding="utf-8")
+            config_path.write_text(
+                existing.replace("max_patch_rounds: 2", "max_patch_rounds: 0"),
+                encoding="utf-8",
+            )
+
+            phase = service.begin_phase(repo_path=repo_path, run_id=run.run_id)
+            service.submit_phase(
+                repo_path=repo_path,
+                run_id=run.run_id,
+                phase_id=phase["phase"]["id"],
+                packet=self._packet(),
+            )
+
+            decision = service.decision(repo_path=repo_path, run_id=run.run_id)
+            self.assertEqual(decision["decision"], "HOLD")
+            self.assertIn("REVIEW_LOOP_BREAK", decision["rationale"])
 
 
 if __name__ == "__main__":

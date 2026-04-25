@@ -17,6 +17,47 @@ def _tupled(values: Any) -> tuple[str, ...]:
     return tuple(str(value) for value in values)
 
 
+PATCH_DEFECT_CLASSES: tuple[str, ...] = (
+    "code_bug",
+    "verification_failure",
+    "falsified_packet",
+)
+
+
+@dataclass(frozen=True)
+class PatchTarget:
+    file: str
+    line: int
+    defect_class: str
+    evidence: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "file": self.file,
+            "line": self.line,
+            "defect_class": self.defect_class,
+            "evidence": self.evidence,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "PatchTarget":
+        return cls(
+            file=str(data["file"]),
+            line=int(data.get("line", 0)),
+            defect_class=str(data.get("defect_class", "code_bug")),
+            evidence=str(data.get("evidence", "")),
+        )
+
+
+def _patch_targets(values: Any) -> tuple[PatchTarget, ...]:
+    if not values:
+        return ()
+    return tuple(
+        item if isinstance(item, PatchTarget) else PatchTarget.from_dict(item)
+        for item in values
+    )
+
+
 @dataclass(frozen=True)
 class PhaseDefinition:
     id: str
@@ -31,6 +72,7 @@ class PhaseDefinition:
     )
     carryforwards: tuple[str, ...] = ()
     status: str = "pending"
+    patch_round: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -44,6 +86,7 @@ class PhaseDefinition:
             "stop_condition": self.stop_condition,
             "carryforwards": list(self.carryforwards),
             "status": self.status,
+            "patch_round": self.patch_round,
         }
 
     @classmethod
@@ -64,6 +107,7 @@ class PhaseDefinition:
             ),
             carryforwards=_tupled(data.get("carryforwards")),
             status=str(data.get("status", "pending")),
+            patch_round=int(data.get("patch_round", 0)),
         )
 
 
@@ -144,6 +188,7 @@ class PhaseDecision:
     next_action: str = ""
     may_start_next_phase: bool = False
     next_phase_override: str | None = None
+    patch_targets: tuple[PatchTarget, ...] = ()
     created_at: str = field(default_factory=utc_now_iso)
 
     def to_dict(self) -> dict[str, Any]:
@@ -156,6 +201,7 @@ class PhaseDecision:
             "next_action": self.next_action,
             "may_start_next_phase": self.may_start_next_phase,
             "next_phase_override": self.next_phase_override,
+            "patch_targets": [target.to_dict() for target in self.patch_targets],
             "created_at": self.created_at,
         }
 
@@ -170,6 +216,7 @@ class PhaseDecision:
             next_action=str(data.get("next_action", "")),
             may_start_next_phase=bool(data.get("may_start_next_phase", False)),
             next_phase_override=data.get("next_phase_override"),
+            patch_targets=_patch_targets(data.get("patch_targets")),
             created_at=str(data.get("created_at", utc_now_iso())),
         )
 
@@ -185,6 +232,7 @@ class PhaseDecision:
             carryforwards=(),
             next_action="Proceed to the next phase.",
             may_start_next_phase=True,
+            patch_targets=(),
         )
 
     @classmethod
@@ -194,6 +242,7 @@ class PhaseDecision:
         summary: str,
         rationale: str,
         carryforwards: tuple[str, ...] | list[str] = (),
+        patch_targets: tuple[PatchTarget, ...] | list[dict[str, Any]] = (),
     ) -> "PhaseDecision":
         return cls(
             decision="PATCH_REQUIRED",
@@ -203,6 +252,7 @@ class PhaseDecision:
             carryforwards=_tupled(carryforwards),
             next_action="Apply the requested patch slice and resubmit the same phase.",
             may_start_next_phase=False,
+            patch_targets=_patch_targets(patch_targets),
         )
 
 
@@ -214,3 +264,5 @@ class ReviewRequest:
     repo_config: dict[str, Any]
     diff_summary: dict[str, Any]
     plan_text: str
+    prior_decision: PhaseDecision | None = None
+    max_patch_rounds: int = 2

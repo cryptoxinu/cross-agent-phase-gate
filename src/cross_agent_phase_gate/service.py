@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -72,6 +71,9 @@ class PhaseGateService:
             raise RuntimeError("Run is on HOLD. Resume only after updating the run.")
         if run.status == "closed":
             raise RuntimeError("Run is closed. Initialize a new run to continue work.")
+        prior_decision = self._load_phase_decision_if_exists(
+            repo_path, run.run_id, phase.id
+        )
         updated_phase = replace(phase, status="in_progress")
         updated_run = self._replace_phase(run, updated_phase).with_updates(
             status="phase_in_progress"
@@ -81,6 +83,8 @@ class PhaseGateService:
             "run": updated_run.to_dict(),
             "phase": updated_phase.to_dict(),
             "active_carryforwards": list(updated_run.active_carryforwards),
+            "prior_decision": prior_decision.to_dict() if prior_decision else None,
+            "patch_round": updated_phase.patch_round,
         }
 
     def submit_phase(
@@ -107,6 +111,10 @@ class PhaseGateService:
         self.store.save_packet(repo_path, run.run_id, phase_id, packet)
         diff_summary = self._collect_diff_summary(repo_path=repo_path, phase=phase)
         plan_text = Path(run.plan_path).read_text(encoding="utf-8")
+        prior_decision = self._load_phase_decision_if_exists(
+            repo_path, run.run_id, phase_id
+        )
+        max_patch_rounds = self._max_patch_rounds(repo_config)
         decision = self._review_adapter_for_run(run).review(
             ReviewRequest(
                 run=run,
@@ -115,9 +123,16 @@ class PhaseGateService:
                 repo_config=repo_config,
                 diff_summary=diff_summary,
                 plan_text=plan_text,
+                prior_decision=prior_decision,
+                max_patch_rounds=max_patch_rounds,
             )
         )
         decision = self._canonicalize_decision_phase(decision=decision, phase=phase)
+        decision = self._enforce_patch_round_cap(
+            decision=decision,
+            phase=phase,
+            max_patch_rounds=max_patch_rounds,
+        )
         self.store.save_decision(repo_path, run.run_id, phase_id, decision)
         updated_run = self._apply_decision(run, decision)
         self.store.save_run(repo_path, updated_run)
@@ -186,15 +201,18 @@ class PhaseGateService:
         new_index = run.current_phase_index
         new_status = run.status
         phase_status = phase.status
+        new_patch_round = phase.patch_round
 
         if decision.decision == "PASS":
             phase_status = "passed"
+            new_patch_round = 0
             new_index = run.current_phase_index + 1
             new_status = (
                 "completed" if new_index >= len(phases) else "ready_for_next_phase"
             )
         elif decision.decision == "CONDITIONAL_PASS":
             phase_status = "conditional_pass"
+            new_patch_round = 0
             if decision.may_start_next_phase:
                 new_index = run.current_phase_index + 1
                 new_status = (
@@ -207,11 +225,13 @@ class PhaseGateService:
         elif decision.decision == "PATCH_REQUIRED":
             phase_status = "patch_required"
             new_status = "patch_required"
+            new_patch_round = phase.patch_round + 1
         elif decision.decision == "HOLD":
             phase_status = "hold"
             new_status = "hold"
         elif decision.decision == "REDIRECT":
             phase_status = "redirected"
+            new_patch_round = 0
             if decision.next_phase_override:
                 for index, candidate in enumerate(phases):
                     if candidate.id == decision.next_phase_override:
@@ -222,7 +242,9 @@ class PhaseGateService:
                 if decision.may_start_next_phase
                 else "redirected"
             )
-        phases[run.current_phase_index] = replace(phase, status=phase_status)
+        phases[run.current_phase_index] = replace(
+            phase, status=phase_status, patch_round=new_patch_round
+        )
         return run.with_updates(
             phases=tuple(phases),
             active_carryforwards=active_carryforwards,
@@ -230,6 +252,61 @@ class PhaseGateService:
             status=new_status,
             last_decision_phase_id=decision.phase,
         )
+
+    def _enforce_patch_round_cap(
+        self,
+        decision: PhaseDecision,
+        phase: PhaseDefinition,
+        max_patch_rounds: int,
+    ) -> PhaseDecision:
+        if decision.decision != "PATCH_REQUIRED":
+            return decision
+        if phase.patch_round < max_patch_rounds:
+            return decision
+        # Builder has already used the patch budget; escalate to the human.
+        loop_break_note = (
+            "[REVIEW_LOOP_BREAK] Patch-round cap reached "
+            f"(patch_round={phase.patch_round}, max={max_patch_rounds}). "
+            "Reviewer wanted another PATCH_REQUIRED; auto-converted to HOLD "
+            "for human adjudication. Builder and reviewer must agree on the "
+            "remaining defects (or accept them as carryforwards) before "
+            "resuming."
+        )
+        return replace(
+            decision,
+            decision="HOLD",
+            summary=(decision.summary or "Patch-round cap reached.")
+            + " (REVIEW_LOOP_BREAK)",
+            rationale=(
+                f"{decision.rationale}\n\n{loop_break_note}"
+                if decision.rationale
+                else loop_break_note
+            ),
+            next_action=(
+                "Stop. Surface the loop-break to the human operator. Resume "
+                "only after the operator updates the plan, accepts the "
+                "remaining patch_targets as carryforwards, or explicitly "
+                "instructs a single additional patch round."
+            ),
+            may_start_next_phase=False,
+            carryforwards=tuple([*decision.carryforwards, loop_break_note]),
+        )
+
+    def _max_patch_rounds(self, repo_config: dict[str, Any]) -> int:
+        review_rules = repo_config.get("review_rules") or {}
+        if isinstance(review_rules, dict):
+            value = review_rules.get("max_patch_rounds")
+            if isinstance(value, int) and value >= 0:
+                return value
+        return 2
+
+    def _load_phase_decision_if_exists(
+        self, repo_path: Path, run_id: str, phase_id: str
+    ) -> PhaseDecision | None:
+        try:
+            return self.store.load_decision(repo_path, run_id, phase_id)
+        except FileNotFoundError:
+            return None
 
     def _review_adapter_for_run(self, run: RunManifest) -> ReviewAdapter:
         if self.review_adapter is not None:

@@ -252,7 +252,7 @@ def _read_http_error(exc: urllib.error.HTTPError) -> str:
 
 def _request_timeout(path: str) -> int:
     if path == "/submit-phase":
-        return 300
+        return 1200
     return 30
 
 
